@@ -1,0 +1,64 @@
+name: Problem report
+description: Something didn't work (install, hosting, joining, invitations, a crash in the game...)
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: SCBLLink version
+      description: Shown at the top of SCBLLink's window and the first line of scbllink.log.
+      placeholder: "0.3.5"
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Were you the host or a friend who joined?
+      options:
+        - Host
+        - Friend (joined)
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: What were you playing?
+      options:
+        - Co-op
+        - Spies vs Mercs (Versus)
+        - Single player
+        - Didn't get into the game
+    validations:
+      required: true
+  - type: input
+    id: players
+    attributes:
+      label: How many players, on how many PCs?
+      placeholder: "2 players, 2 PCs"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Say where it stopped (for example "creating game session", a crash after the mission, a freeze).
+    validations:
+      required: true
+  - type: textarea
+    id: scbllink_log
+    attributes:
+      label: scbllink.log
+      description: Next to SCBLLink.exe, or click "Copy log" in SCBLLink and paste it here. It shows your Steam name and PC name, not your real IP address.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: game_log
+    attributes:
+      label: scbllink-game.log
+      description: In the game folder, under src\SYSTEM. Paste it, or drag the file into this box.
+      render: text
+  - type: input
+    id: build
+    attributes:
+      label: Game build
+      description: DX11 (the default from Steam) or DX9, and the game's language.
+      placeholder: "DX11, English"
