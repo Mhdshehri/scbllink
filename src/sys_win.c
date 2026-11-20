@@ -17,6 +17,18 @@ IMP BOOL WINAPI GetExitCodeProcess(HANDLE h, DWORD *code);
 IMP BOOL WINAPI TerminateProcess(HANDLE h, unsigned int code);
 IMP HANDLE WINAPI CreateThread(void *sa, size_t stack, DWORD (WINAPI *fn)(void *), void *arg, DWORD flags, DWORD *tid);
 IMP long WINAPI RegGetValueA(void *key, const char *sub, const char *value, DWORD flags, DWORD *type, void *data, DWORD *len);
+IMP long WINAPI SHGetFolderPathA(void *wnd, int csidl, HANDLE token, DWORD flags, char *path);
+
+#define CSIDL_PERSONAL 5 /* Documents, wherever the user moved it (OneDrive too) */
+bool documents_dir(char *out, int n)
+{
+    char p[260];
+    if (n <= 0 || SHGetFolderPathA(0, CSIDL_PERSONAL, 0, 0, p) != 0) return false;
+    p[259] = 0;
+    if ((int)strlen(p) >= n) return false;
+    sfmt(out, (size_t)n, "%s", p);
+    return true;
+}
 
 #define CREATE_NO_WINDOW 0x08000000
 #define STARTF_USESHOWWINDOW 1

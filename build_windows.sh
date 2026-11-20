@@ -32,7 +32,7 @@ mkdef user32 GetDlgItem@8 SetFocus@4 GetWindowRect@8 OpenClipboard@4 EmptyClipbo
 mkdef gdi32 CreateFontW@56 GetDeviceCaps@8 CreateSolidBrush@4 CreatePen@12 SelectObject@8 DeleteObject@4 \
     GetStockObject@4 SetTextColor@8 SetBkColor@8 SetBkMode@8 RoundRect@28
 mkdef comctl32 InitCommonControls@0
-mkdef shell32 ShellExecuteA@24
+mkdef shell32 ShellExecuteA@24 SHGetFolderPathA@20
 mkdef advapi32 RegGetValueA@28 SystemFunction036@8 ConvertStringSecurityDescriptorToSecurityDescriptorA@16
 mkdef ws2_32 WSAStartup@8 socket@12 bind@12 connect@12 listen@8 accept@12 send@16 recv@16 \
     sendto@24 recvfrom@24 select@20 closesocket@4 ioctlsocket@12 getsockname@12 setsockopt@20 \

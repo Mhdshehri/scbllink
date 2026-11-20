@@ -941,13 +941,17 @@ static void ff_fill(bool defaults)
 {
     int n = 0;
     char *ini = defaults ? 0 : file_read_all(g_shown.ff_ini, &n);
+    /* motion blur and occlusion live in the game's own videoSettings.ini */
+    char *vid = defaults || !g_shown.video_ini[0] ? 0 : file_read_all(g_shown.video_ini, &n);
     for (int i = 0; i < FF_NSETTINGS; i++) {
         char raw[64], v[FF_VAL];
-        if (!ini || !ff_ini_get(ini, FF_SETTINGS[i].sec, FF_SETTINGS[i].key, raw, sizeof raw) || !ff_normalize(i, raw, v, sizeof v))
+        const char *from = FF_SETTINGS[i].video ? vid : ini;
+        if (!from || !ff_ini_get(from, FF_SETTINGS[i].sec, FF_SETTINGS[i].key, raw, sizeof raw) || !ff_normalize(i, raw, v, sizeof v))
             ff_normalize(i, FF_SETTINGS[i].def, v, sizeof v);
         ff_show(i, v);
     }
     free(ini);
+    free(vid);
 }
 
 /* the window's values, checked; false (and a message) when one isn't valid */

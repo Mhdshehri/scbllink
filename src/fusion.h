@@ -17,6 +17,8 @@ typedef struct {
     bool zero_ok;           /* FF_INT: 0 is allowed below min (0 = off) */
     const char *def;        /* Fusion Fix's own default */
     const char *help;       /* the window's explanation (shown on the mouse) */
+    bool video;             /* in the game's own videoSettings.ini (Documents\Ubisoft\Blacklist),
+                               not in Fusion Fix's .ini. Always each player's own. */
 } FfSetting;
 
 extern const FfSetting FF_SETTINGS[];
@@ -40,8 +42,9 @@ bool ff_harden(char **ini);
 
 /* Co-op settings, host -> friends: idx byte, len byte, value. */
 int ff_pack_shared(const char *ini, uint8_t *out, int cap);
-enum { FF_ALL, FF_SHARED, FF_PERSONAL };
-/* Writes idx/len/value settings (only the co-op ones, only each player's own, or all). */
+enum { FF_ALL, FF_SHARED, FF_PERSONAL, FF_VIDEO };
+/* Writes idx/len/value settings (only the co-op ones, only each player's own, or all) to
+   Fusion Fix's .ini; FF_VIDEO: only the videoSettings.ini ones, to that file's text. */
 int ff_apply(char **ini, const uint8_t *m, int n, int which);
 /* Writes the host's co-op settings; anything not valid is skipped. Returns
    how many were applied, -1 when the message is malformed. */

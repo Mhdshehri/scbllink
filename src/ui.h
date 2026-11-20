@@ -4,7 +4,7 @@
 #pragma once
 #include "mini.h"
 
-#define SCBLLINK_VERSION "0.3.8"
+#define SCBLLINK_VERSION "0.3.9"
 
 typedef enum {
     CMD_NONE,
@@ -48,6 +48,7 @@ typedef struct {
     bool ff_ok;           /* Fusion Fix is installed: its settings can be changed */
     bool ff_host_rules;   /* joined: the host's co-op settings are in use */
     char ff_ini[400];     /* Fusion Fix's .ini (the settings window reads it) */
+    char video_ini[400];  /* the game's own videoSettings.ini, "" until the game made it */
     bool game_linked;     /* SCBLLink's own game DLL is connected */
     char invite_from[20]; /* a pending invitation, "" = none */
     bool dev_two;         /* developer build: a second game on this PC is chosen */

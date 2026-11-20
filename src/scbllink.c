@@ -633,6 +633,30 @@ static bool ff_edit(bool (*fn)(char **ini, void *arg), void *arg)
 
 static bool ff_edit_nothing(char **ini, void *arg) { (void)ini; (void)arg; return true; }
 
+/* The game's own videoSettings.ini (Documents\Ubisoft\Blacklist): motion blur and occlusion,
+   which the game's menu doesn't offer. Only those keys' values change; the game made the file. */
+static bool video_ini_path(char *out, size_t n)
+{
+    char d[300];
+    if (!documents_dir(d, sizeof d)) return false;
+    sfmt(out, n, "%s\\Ubisoft\\Blacklist\\videoSettings.ini", d);
+    return file_exists(out);
+}
+
+/* returns how many changed, -1 when the file couldn't be written */
+static int video_apply(const uint8_t *m, int n)
+{
+    char path[400];
+    if (!video_ini_path(path, sizeof path)) return 0; /* the game hasn't made it yet: nothing to change */
+    int len = 0;
+    char *ini = file_read_all(path, &len);
+    if (!ini) return 0;
+    int changed = ff_apply(&ini, m, n, FF_VIDEO);
+    if (changed > 0 && !file_write_text(path, ini)) changed = -1;
+    free(ini);
+    return changed;
+}
+
 static bool ff_install(void)
 {
     char dir[700], zip[800], un[800];
@@ -2188,6 +2212,12 @@ static void publish(void)
     sfmt(st.invite_from, sizeof st.invite_from, "%s", g_invite_from);
     st.ff_host_rules = g_mode == MODE_JOIN && g_ff_host_rules;
     if (st.ff_ok) sys_path(st.ff_ini, sizeof st.ff_ini, FF_INI);
+    {
+        static char vpath[400];
+        static u64 vat;
+        if (!vat || now_ms() - vat > 5000) { vat = now_ms(); if (!video_ini_path(vpath, sizeof vpath)) vpath[0] = 0; }
+        sfmt(st.video_ini, sizeof st.video_ini, "%s", vpath);
+    }
     static u64 last_scan;
     static bool running;
     if (now_ms() - last_scan > 2000) { last_scan = now_ms(); running = game_running(); }
@@ -2292,6 +2322,11 @@ static bool handle(const Cmd *c)
         /* joined: the host's co-op settings stay; only this player's own change */
         FfApply a = { buf, n, g_ff_host_rules ? FF_PERSONAL : FF_ALL, 0 };
         if (!ff_edit(ff_apply_cb, &a)) break;
+        int vc = video_apply(buf, n);
+        if (vc < 0) say("! Could not save the game's videoSettings.ini (motion blur, occlusion): is it read-only?");
+        else a.applied += vc;
+        if (vc > 0 && game_running())
+            say("! Blacklist is running: it may write its videoSettings.ini again when it closes. If motion blur comes back, save these settings again with the game closed.");
         say("Game settings saved (%d changed). They count from the next start of Blacklist.", a.applied);
         if (g_mode == MODE_HOST) send_ff_all();
         break;

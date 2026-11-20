@@ -16,6 +16,7 @@ void proc_stop(proc_t p);      /* ends it and frees the handle */
 bool reg_read_hklm(const char *subkey, const char *value, char *out, int n);
 
 char *file_read_all(const char *path, int *len); /* malloc'd, 0-terminated; NULL if missing */
+bool documents_dir(char *out, int n); /* the user's Documents folder (where the game keeps its settings) */
 
 /* Run fn(arg) on its own thread (for checks that may block on a socket). */
 bool thread_start(void (*fn)(void *), void *arg);
