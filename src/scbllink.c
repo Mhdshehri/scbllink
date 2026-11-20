@@ -377,14 +377,49 @@ static void firewall_add(void)
         "localip=%s remoteip=%s profile=any", net, net);
 }
 
+/* What Host (or Join) is doing right now, shown as the status while SCBLLink sets up, so the
+   window never looks stuck. publish() sends it to the window at once. */
+static char g_step[100];
+static void publish(void);
+static void step(const char *what)
+{
+    sfmt(g_step, sizeof g_step, "%s", what);
+    publish();
+}
+
+/* Turning IPv6 off on the adapter goes through PowerShell, which takes 2-3 s to start: it runs
+   on its own thread while the rest goes on. Its result is logged by the engine (v6_report). */
+#define V6_CMD "powershell -NoProfile -NonInteractive -Command \"Disable-NetAdapterBinding -Name '" ADAPTER "' -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue\""
+static volatile int g_v6_state; /* 0 idle, 1 running, 2 done */
+static volatile int g_v6_rc;
+static void v6_thread(void *arg)
+{
+    (void)arg;
+    g_v6_rc = run_hidden(V6_CMD, 20000);
+    g_v6_state = 2;
+}
+static void v6_start(void)
+{
+    g_v6_state = 1;
+    if (!thread_start(v6_thread, 0)) { g_v6_rc = run_hidden(V6_CMD, 20000); g_v6_state = 2; }
+}
+static void v6_report(void)
+{
+    if (g_v6_state != 2) return;
+    g_v6_state = 0;
+    note("run: %s -> %d", V6_CMD, g_v6_rc);
+}
+
 static bool net_up(int last)
 {
     if (g_net_up && g_my_ip == vip(last)) return true;
+    step(g_mode == MODE_HOST ? "Hosting: making the SCBLLink network adapter..." : "Making the SCBLLink network adapter...");
     const char *e = tun_open();
-    if (e) { say("! %s", e); return false; }
+    if (e) { g_step[0] = 0; say("! %s", e); return false; }
     note("wintun.dll sha256 %s", tun_dll_hash());
     char ip[16];
     vip_text(vip(last), ip);
+    step(g_mode == MODE_HOST ? "Hosting: giving the adapter its address..." : "Giving the adapter its address...");
     /* IPv4 only, a fixed address, no gateway: the PC keeps using its own
        internet connection for everything else. */
     if (cmd("netsh interface ipv4 set address name=\"" ADAPTER "\" static %s 255.255.255.0", ip) != 0) {
@@ -392,16 +427,20 @@ static bool net_up(int last)
         if (cmd("netsh interface ipv4 set address name=\"" ADAPTER "\" static %s 255.255.255.0", ip) != 0) {
             say("! Could not give the SCBLLink adapter its address (%s). Is SCBLLink running as administrator?", ip);
             tun_close();
+            g_step[0] = 0;
             return false;
         }
     }
     cmd("netsh interface ipv4 set subinterface \"" ADAPTER "\" mtu=%d store=active", MTU);
     cmd("netsh interface ipv4 set interface \"" ADAPTER "\" metric=500");
-    /* the game reads the first address of an adapter: keep IPv6 off it */
-    cmd("powershell -NoProfile -NonInteractive -Command \"Disable-NetAdapterBinding -Name '" ADAPTER "' -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue\"");
+    /* the game reads the first address of an adapter: keep IPv6 off it (in the background;
+       the first server check waits for it, so the game never starts before it's done) */
+    v6_start();
     g_my_ip = vip(last);
+    step(g_mode == MODE_HOST ? "Hosting: firewall rules for the game's ports..." : "Firewall rules for the game's ports...");
     firewall_add();
     g_net_up = true;
+    g_step[0] = 0;
     say("SCBLLink adapter is up: this PC is %s on the SCBLLink network.", ip);
     return true;
 }
@@ -467,9 +506,12 @@ static bool our_dll(char *path, size_t n)
     if (!g_our_sha[0] && !sha256_file(p, g_our_sha)) g_our_sha[0] = 0;
     return g_our_sha[0] != 0;
 }
-/* Our DLL is in place, with the game's own kept beside it. The answer is kept for 5 s. */
+/* Our DLL is in place, with the game's own kept beside it. The answer is kept for 5 s.
+   g_fix_old: another SCBLLink's game DLL is there (an older version): "Update SCBL Fix". */
 static u64 g_fix_at;
+static bool g_fix_old;
 static u64 *fix_cache_at(void) { return &g_fix_at; }
+static bool looks_like_ubisofts(const char *path);
 static bool fix_ready(void)
 {
     u64 at = g_fix_at;
@@ -479,7 +521,9 @@ static bool fix_ready(void)
     char orig[800], dll[800];
     sys_path(orig, sizeof orig, "uplay_r1_loader.orig.dll");
     sys_path(dll, sizeof dll, "uplay_r1_loader.dll");
-    ok = g_sys_dir[0] && our_dll(0, 0) && file_exists(orig) && file_is(dll, g_our_sha);
+    bool base = g_sys_dir[0] && our_dll(0, 0) && file_exists(orig);
+    ok = base && file_is(dll, g_our_sha);
+    g_fix_old = base && !ok && file_exists(dll) && !looks_like_ubisofts(dll);
     return ok;
 }
 
@@ -665,7 +709,8 @@ static void fix_install(void)
         if (!file_copy(dll, cur)) { say("! Could not put the SCBL Fix in the game folder (is the game closed?)."); return; }
     }
     *fix_cache_at() = 0;
-    say("SCBL Fix installed: SCBLLink's game DLL. The game's own DLL is kept as uplay_r1_loader.orig.dll.");
+    if (g_fix_old) say("SCBL Fix updated: the game folder now has this SCBLLink's game DLL.");
+    else say("SCBL Fix installed: SCBLLink's game DLL. The game's own DLL is kept as uplay_r1_loader.orig.dll.");
     say("(After a Steam \"Verify integrity\", click Install SCBL Fix again.)");
     if (!ff_check()) ff_install();
 }
@@ -788,6 +833,7 @@ static void check_start(bool quiet)
 
 static bool g_ready;          /* last check passed */
 static u64 g_next_check;
+static int g_chk_tries;       /* checks since Host/Join: the first ones are quick and quiet */
 
 static void check_report(void)
 {
@@ -1913,6 +1959,8 @@ static void pump_callbacks(void)
 
 static void stop_mode(void)
 {
+    g_step[0] = 0;
+    g_chk_tries = 0;
     if (g_mode == MODE_IDLE) return;
     g_ff_host_rules = false;
     if (game_running()) say("! Splinter Cell: Blacklist is still running. Close it too: it can't reach the server any more.");
@@ -1985,6 +2033,22 @@ static bool own_ubi_name(const char *ubi, char name[64])
 static void own_log(const char *line) { if (line[0] == '!') say("%s", line); else note("%s", line); }
 
 /* the game's server, on this PC's SCBLLink address only */
+/* A new address isn't usable at once: Windows first checks that nobody else on the network
+   has it (a second or two). Until then nothing can bind to it, so wait for it. */
+static bool addr_wait(uint32_t ip, int max_ms)
+{
+    for (int waited = 0;; waited += 250) {
+        sock_t s = udp_open(ip, 0, 0);
+        if (s != BADSOCK) {
+            sock_close(s);
+            note("the address %s was usable after %d ms", iptext(ip), waited);
+            return true;
+        }
+        if (waited >= max_ms) return false;
+        sleep_ms(250);
+    }
+}
+
 static bool server_start(void)
 {
 #ifdef SCBL_DEV
@@ -2006,13 +2070,20 @@ static void start_host(void)
 #ifdef SCBL_DEV
     g_solo_on = g_solo;
 #endif
-    if (!net_up(HOST_LAST) || !server_start()) { stop_mode(); return; }
+    say("Hosting: setting up. This takes a few seconds; the steps show here and at the top.");
+    if (!net_up(HOST_LAST)) { stop_mode(); return; }
+    step("Hosting: waiting for Windows to finish the adapter...");
+    if (!addr_wait(vip(HOST_LAST), 10000)) note("the address %s still isn't usable after 10 s", iptext(vip(HOST_LAST)));
+    step("Hosting: starting the game's server...");
+    if (!server_start()) { stop_mode(); return; }
     guest_start();
     rec_open();
     if (g_solo_on) say("! DEV: recording alone. Your own game is recorded; friends can't play in this mode (turn \"Record alone\" off to play together).");
     say("Creating a friends-only Steam lobby...");
     S.MM_CreateLobby(MM, LOBBY_FRIENDS_ONLY, MAX_PEERS + 1);
-    g_next_check = now_ms() + 1500;
+    g_step[0] = 0; /* from here the status follows the lobby and the server check */
+    g_chk_tries = 0;
+    g_next_check = now_ms() + 500;
 }
 
 static void start_join(u64 lobby)
@@ -2021,6 +2092,7 @@ static void start_join(u64 lobby)
     if (g_mode == MODE_IDLE) {
         if (!preflight()) return;
         g_mode = MODE_JOIN;
+        g_chk_tries = 0;
         rec_open();
         say("Looking for a friend who is hosting...");
     }
@@ -2082,11 +2154,15 @@ static void tick(u64 t)
             p->last_ka = t;
         }
     }
-    /* keep checking until ready, then every 15 s quietly */
-    if (g_net_up && g_mode != MODE_IDLE && t >= g_next_check && g_chk_state == CHK_IDLE &&
+    /* keep checking until ready (every second at first, quietly, then every 5 s), then every
+       15 s quietly. Not before IPv6 is off the adapter: the game must start after that. */
+    v6_report();
+    if (g_net_up && g_mode != MODE_IDLE && t >= g_next_check && g_chk_state == CHK_IDLE && g_v6_state != 1 &&
         (g_mode == MODE_HOST || (g_npeers && g_peers[0].welcomed))) {
-        check_start(g_ready);
-        g_next_check = t + (g_ready ? 15000 : 5000);
+        bool early = g_chk_tries < 5;
+        check_start(g_ready || early);
+        g_chk_tries++;
+        g_next_check = t + (g_ready ? 15000 : early ? 1000 : 5000);
     }
     check_report();
 }
@@ -2102,7 +2178,9 @@ static void publish(void)
     st.game_found = find_game();
     if (st.game_found && !g_ff_checked) ff_check();
     /* "Install SCBL Fix" stays until Fusion Fix is in too (unless another mod's version.dll is there) */
-    st.fix_ok = st.game_found && fix_ready() && (g_ff_ok || g_ff_blocked);
+    st.dll_ok = st.game_found && fix_ready();
+    st.fix_ok = st.dll_ok && (g_ff_ok || g_ff_blocked);
+    st.fix_old = st.game_found && !st.dll_ok && g_fix_old;
     st.ff_ok = st.game_found && g_ff_ok;
     st.game_linked = gp_connected() && g_game_on;
     st.dev_solo = g_solo;
@@ -2122,9 +2200,12 @@ static void publish(void)
     if (!g_steam_ok) sfmt(st.status, sizeof st.status, "!Steam is not ready - see the log");
     else if (!st.game_found) sfmt(st.status, sizeof st.status, "!Splinter Cell: Blacklist was not found");
     else if (g_mode == MODE_IDLE && running) sfmt(st.status, sizeof st.status, "!Close Blacklist first: it has to start after SCBLLink");
+    else if (g_mode == MODE_IDLE && st.fix_old) sfmt(st.status, sizeof st.status, "!Click \"Update SCBL Fix\" first");
+    else if (g_mode == MODE_IDLE && !st.dll_ok) sfmt(st.status, sizeof st.status, "!Click \"Install SCBL Fix\" first");
     else if (g_mode == MODE_IDLE) sfmt(st.status, sizeof st.status, "Ready to host or join");
+    else if (g_step[0]) sfmt(st.status, sizeof st.status, "%s", g_step);
     else if (g_mode == MODE_HOST) {
-        if (!g_lobby) sfmt(st.status, sizeof st.status, "Hosting: opening your lobby...");
+        if (!g_lobby) sfmt(st.status, sizeof st.status, "Hosting: opening your Steam lobby...");
         else if (!g_ready) sfmt(st.status, sizeof st.status, "Hosting: starting the game's server...");
         else if (!linked) sfmt(st.status, sizeof st.status, "Ready - waiting for a friend to join");
         else sfmt(st.status, sizeof st.status, "Ready - %d friend%s linked", linked, linked == 1 ? "" : "s");

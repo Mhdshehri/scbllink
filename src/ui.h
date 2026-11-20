@@ -4,7 +4,7 @@
 #pragma once
 #include "mini.h"
 
-#define SCBLLINK_VERSION "0.3.5"
+#define SCBLLINK_VERSION "0.3.8"
 
 typedef enum {
     CMD_NONE,
@@ -38,7 +38,9 @@ typedef struct {
     bool linked;          /* join: the host welcomed us. host: a friend is linked */
     bool ready;           /* the host's server answers through the link */
     bool game_found;      /* Blacklist's folder was found */
-    bool fix_ok;          /* SCBLLink's game DLL is in place */
+    bool fix_ok;          /* SCBLLink's game DLL and Fusion Fix are in place */
+    bool dll_ok;          /* SCBLLink's game DLL (this version's) is in place: until then everything else is locked */
+    bool fix_old;         /* an older SCBLLink game DLL is in the game folder: "Update SCBL Fix" */
     bool game_running;
     char my_name[20];     /* this player's name in the game */
     char my_ip[16];       /* this PC's SCBLLink address, "" when the adapter is off */

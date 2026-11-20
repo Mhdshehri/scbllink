@@ -622,9 +622,15 @@ static void build_howto(const UiState *s, char *o, int n)
     if (!s->game_found) {
         ADD("! Splinter Cell: Blacklist was not found through Steam.\r\n");
         ADD("Install it from Steam, start it once until the main menu, then open SCBLLink again.\r\n\r\n");
-    } else if (!s->fix_ok) {
+    } else if (s->fix_old) {
+        ADD("=> First click \"Update SCBL Fix\": the game folder has the game DLL of another SCBLLink version.\r\n");
+        ADD("   Everything else stays locked until then, so the game always gets the DLL made for this SCBLLink.\r\n\r\n");
+    } else if (!s->dll_ok) {
         ADD("=> First click \"Install SCBL Fix\" (once; again after a Steam \"Verify integrity\").\r\n");
-        ADD("   It puts SCBLLink's game DLL in the game folder and installs Fusion Fix.\r\n\r\n");
+        ADD("   It puts SCBLLink's game DLL in the game folder and installs Fusion Fix.\r\n");
+        ADD("   Everything else stays locked until then.\r\n\r\n");
+    } else if (!s->fix_ok) {
+        ADD("Fusion Fix isn't in yet: click \"Install SCBL Fix\" again to get it (see the log).\r\n\r\n");
     }
     if (s->mode == MODE_IDLE) {
         ADD("HOSTING (the one whose PC runs the game's server):\r\n");
@@ -694,15 +700,20 @@ static void refresh_controls(void)
 {
     const UiState *s = &g_shown;
     bool idle = s->mode == MODE_IDLE, host = s->mode == MODE_HOST, join = s->mode == MODE_JOIN;
+    /* nothing but "Install SCBL Fix" until the fix (our game DLL, as shipped next to this
+       SCBLLink.exe) is in the game folder: no hosting or joining with a missing or old DLL */
+    bool fixed = s->game_found && s->dll_ok;
     /* the game has to start after SCBLLink is ready: while it runs, no new link */
-    EnableWindow(g_c[ID_HOST], idle && !g_closing && s->game_found && !s->game_running);
-    EnableWindow(g_c[ID_JOIN], idle && !g_closing && s->game_found && !s->game_running);
+    EnableWindow(g_c[ID_HOST], fixed && idle && !g_closing && !s->game_running);
+    EnableWindow(g_c[ID_JOIN], fixed && idle && !g_closing && !s->game_running);
+    EnableWindow(g_c[ID_LOBBY], fixed || !idle);
+    EnableWindow(g_c[ID_NAME], fixed);
     EnableWindow(g_c[ID_STOP], !idle && !g_closing);
     static int ro = -1;
     int want_ro = host || (join && s->lobby);
     if (want_ro != ro) { SendMessageW(g_c[ID_LOBBY], EM_SETREADONLY, (WPARAM)want_ro, 0); ro = want_ro; }
     EnableWindow(g_c[ID_COPYID], host && s->lobby);
-    EnableWindow(g_c[ID_JOINID], (idle || join) && !s->lobby && !g_closing && s->game_found);
+    EnableWindow(g_c[ID_JOINID], fixed && (idle || join) && !s->lobby && !g_closing);
     int which = host ? LIST_LINKED : LIST_HOSTING;
     if (which != g_list_shown) show_list(which);
     set_text_once(ID_LISTLABEL, idle ? "" : host ? "Friends linked to your game right now:" : "Friends hosting - pick one and click Join:");
@@ -738,22 +749,22 @@ static void refresh_controls(void)
             RedrawWindow(g_c[ID_DEVSOLO], 0, 0, 0x1 | 0x4);
             shown_solo = s->dev_solo;
         }
-        EnableWindow(g_c[ID_DEVSOLO], idle && !g_closing);
+        EnableWindow(g_c[ID_DEVSOLO], fixed && idle && !g_closing);
         static int shown_two = -1;
         if (shown_two != (int)s->dev_two) {
             SetWindowTextW(g_c[ID_DEVTWO], s->dev_two ? WTEXT("2nd game: ON") : WTEXT("2nd game: off"));
             RedrawWindow(g_c[ID_DEVTWO], 0, 0, 0x1 | 0x4);
             shown_two = s->dev_two;
         }
-        EnableWindow(g_c[ID_DEVTWO], idle && !g_closing);
+        EnableWindow(g_c[ID_DEVTWO], fixed && idle && !g_closing);
     }
 #endif
     EnableWindow(g_c[ID_TEST], !g_closing && (s->my_ip[0] || s->invite_from[0]));
     EnableWindow(g_c[ID_DETAILS], !idle);
-    EnableWindow(g_c[ID_SAVENAME], !g_closing);
-    set_text_once(ID_FIX, s->fix_ok ? "Remove SCBL Fix" : "Install SCBL Fix");
+    EnableWindow(g_c[ID_SAVENAME], fixed && !g_closing);
+    set_text_once(ID_FIX, s->fix_ok ? "Remove SCBL Fix" : s->fix_old ? "Update SCBL Fix" : "Install SCBL Fix");
     EnableWindow(g_c[ID_FIX], idle && !g_closing && s->game_found && !s->game_running);
-    EnableWindow(g_c[ID_FFSET], !g_closing && s->ff_ok && !g_ff);
+    EnableWindow(g_c[ID_FFSET], fixed && !g_closing && s->ff_ok && !g_ff);
     static bool locked;
     if (g_ff && locked != s->ff_host_rules) ff_lock_shared();
     locked = s->ff_host_rules;
@@ -1336,7 +1347,7 @@ static void ff_open(void)
 static void on_command(int id, int code)
 {
     switch (id) {
-    case ID_HOST: push_cmd(CMD_HOST, 0); break;
+    case ID_HOST: push_cmd(CMD_HOST, 0); show_tab(TAB_LOG); break; /* the setup steps show in the log */
     case ID_JOIN: push_cmd(CMD_JOIN, 0); break;
     case ID_STOP: push_cmd(CMD_STOP, 0); break;
     case ID_COPYID:
@@ -1388,7 +1399,7 @@ static void on_command(int id, int code)
         break;
     }
     case 1: /* Enter: join the pasted code */
-        if (g_shown.mode != MODE_HOST && !g_shown.lobby && SendMessageW(g_c[ID_LOBBY], WM_GETTEXTLENGTH, 0, 0) > 0)
+        if (g_shown.dll_ok && g_shown.mode != MODE_HOST && !g_shown.lobby && SendMessageW(g_c[ID_LOBBY], WM_GETTEXTLENGTH, 0, 0) > 0)
             on_command(ID_JOINID, 0);
         break;
     case ID_LAUNCH: push_cmd(CMD_LAUNCH, 0); break;
@@ -1402,6 +1413,13 @@ static void on_command(int id, int code)
             if (MessageBoxW(g_wnd, WTEXT("Remove the SCBL Fix?\n\nThe game gets its own uplay_r1_loader.dll back, and Fusion Fix is removed. Online play with SCBLLink needs the fix."),
                             WTEXT("SCBLLink"), MB_YESNO | MB_ICONQUESTION) == IDYES)
                 push_cmd(CMD_FIX_REMOVE, 0);
+        } else if (g_shown.fix_old) {
+            if (MessageBoxW(g_wnd, WTEXT("Update the SCBL Fix?\n\nThe game folder has the game DLL of another SCBLLink version. "
+                                         "SCBLLink puts in the one that came with this version (scbllink-game.dll). The game's own DLL stays kept."),
+                            WTEXT("SCBLLink"), MB_YESNO | MB_ICONQUESTION) == IDYES) {
+                push_cmd(CMD_FIX_INSTALL, 0);
+                show_tab(TAB_LOG);
+            }
         } else {
             if (MessageBoxW(g_wnd, WTEXT("Install the SCBL Fix?\n\nSCBLLink puts its game DLL (scbllink-game.dll) in the game folder as "
                                          "uplay_r1_loader.dll: it takes the game to the host's server over SCBLLink. The game's own DLL is kept, and Remove puts it back.\n\n"
