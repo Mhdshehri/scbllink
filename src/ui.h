@@ -4,7 +4,7 @@
 #pragma once
 #include "mini.h"
 
-#define SCBLLINK_VERSION "0.3.9"
+#define SCBLLINK_VERSION "0.4"
 
 typedef enum {
     CMD_NONE,

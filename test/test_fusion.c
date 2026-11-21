@@ -10,7 +10,7 @@ int main(int argc,char**argv){ (void)argc;
   assert(ff_ini_get(ini,"GHOST","DisableMissionFailOnDetection",v,sizeof v)&&!strcmp(v,"0"));
   /* every setting we show exists in the release's ini with a valid value equal to our default */
   for(int i=0;i<FF_NSETTINGS;i++){ char n[FF_VAL], d[FF_VAL];
-    if(FF_SETTINGS[i].video) continue; /* those are in the game's videoSettings.ini (tested below) */
+    if(FF_SETTINGS[i].video || !strcmp(FF_SETTINGS[i].sec, FF_SCBL_SEC)) continue; /* not Fusion Fix keys (videoSettings.ini: tested below; SCBLLink's own) */
     if(!ff_ini_get(ini,FF_SETTINGS[i].sec,FF_SETTINGS[i].key,v,sizeof v)){printf("MISSING %s.%s\n",FF_SETTINGS[i].sec,FF_SETTINGS[i].key);return 1;}
     if(!ff_normalize(i,v,n,sizeof n)){printf("INVALID %s.%s=%s\n",FF_SETTINGS[i].sec,FF_SETTINGS[i].key,v);return 1;}
     assert(ff_normalize(i,FF_SETTINGS[i].def,d,sizeof d));

@@ -47,7 +47,7 @@ llvm-cvtres -machine:x86 -out:"$OUT/scbllink_res.obj" "$OUT/scbllink.res" >/dev/
 CFLAGS="--target=i686-w64-windows-gnu -std=c11 -O2 -Wall -Wextra -Wno-unused-parameter
   -ffreestanding -fno-stack-protector -fno-asynchronous-unwind-tables
   -fno-ident -fno-builtin -D_WIN32"
-SRC="src/chkstk.c src/crt0_win.c src/ui_win.c src/scbllink.c src/account.c src/fusion.c src/gamepipe_win.c src/lobbycode.c src/plat_win.c src/steam_win.c src/sha256.c
+SRC="src/chkstk.c src/crt0_win.c src/ui_win.c src/scbllink.c src/account.c src/fusion.c src/pec.c src/camera.c src/gamepipe_win.c src/lobbycode.c src/plat_win.c src/steam_win.c src/sha256.c
   src/wintun_win.c src/sys_win.c src/pkt.c src/srv.c src/md5.c src/inflate.c src/ownsrv.c"
 
 build() { # output name, then extra compiler flags

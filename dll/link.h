@@ -8,6 +8,7 @@
  *   INVITE name                              someone invited this player (the overlay shows it)
  *   ACCEPT name                              the player accepted name's invitation
  *   REFRESH                                  the player asked for the friend list to be read again
+ *   NOTICE title line                        a card on the overlay for 30 s (e.g. "Balaclava is ready" / "Restart Blacklist to see it")
  * DLL -> SCBLLink:
  *   HELLO version pid / INVITE account_id / SESSION id invite_only hex / SESSION 0 / BYE */
 #pragma once
@@ -44,4 +45,6 @@ bool sl_next_event(SlEvent *e);
 void sl_send(const char *fmt, ...);  /* one line to SCBLLink (the \n is added) */
 const char *sl_dir(void);            /* the game's folder (for the log) */
 bool sl_second(void);                /* the second game on this PC (developer test, -scbllink2) */
+void pec_start(void);               /* once per PC: save the game's own suit config for the Balaclava choice (pec.c) */
+void cfgcap_start(void);            /* once per PC: save the game's own camera config for the Crosshair choice (cfgcap.c) */
 bool sl_bind_own(void);              /* sockets go on this game's own SCBLLink address */

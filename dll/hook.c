@@ -232,6 +232,16 @@ static bool patch_import(HMODULE exe, const char *dll, const char *name, void *r
     return false;
 }
 
+/* only the game's own import table entry (not the function itself, which everything shares) */
+bool hook_import(const char *dll, const char *name, void **real, void *mine)
+{
+    HMODULE m = GetModuleHandleA(dll);
+    void *fn = m ? GetProcAddress(m, name) : 0;
+    if (!fn) return false;
+    *real = fn;
+    return patch_import(GetModuleHandleA(0), dll, name, fn, mine);
+}
+
 static void put_in(HMODULE exe, const char *dll, const char *name, void **real, void *mine, bool may_load)
 {
     if (*real) return; /* done already */

@@ -79,6 +79,14 @@ const FfSetting FF_SETTINGS[] = {
     { "WinDrv.WindowsClient", "UseMotionBlur", "Motion blur", FF_BOOL, 0, 1, 0, false, false, false, "1",
       "The blur when the camera moves fast. The game's menu has no switch for it. Off gives a sharper picture.", true },
     /* not Occlusion_Off: its values aren't documented, and 0 made the mouse pointer show in the game (tested) */
+    /* SCBLLink's own: kept in Fusion Fix's .ini under [SCBLLink] (Fusion Fix ignores it); SCBLLink writes
+       the game's PEC.ini from it (pec.c). Each player's own, never sent. */
+    { FF_SCBL_SEC, "Balaclava", "Balaclava (Sam)", FF_BOOL, 0, 1, 0, false, false, false, "0",
+      "Sam wears the balaclava instead of his bare head, in every suit. Only on this PC. The first time only: start Blacklist once (to the menu), then restart it.", false },
+    { FF_SCBL_SEC, "BalaclavaBriggs", "Balaclava (Briggs, co-op)", FF_BOOL, 0, 1, 0, false, false, false, "0",
+      "Briggs, the co-op partner, wears the balaclava too. What your own screen shows; each player chooses for himself. The first time only: start Blacklist once (to the menu), then restart it.", false },
+    { FF_SCBL_SEC, "Crosshair", "Crosshair", FF_BOOL, 0, 1, 0, false, false, false, "1",
+      "Off: no crosshair on foot, aiming or in cover (a laser sight still shows its dot). The drone, turret and remote sniper keep theirs. Only on this PC. The first time only: start Blacklist once (to the menu), then restart it.", false },
 };
 const int FF_NSETTINGS = (int)(sizeof FF_SETTINGS / sizeof FF_SETTINGS[0]);
 

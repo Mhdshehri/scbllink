@@ -21,6 +21,9 @@ typedef struct {
                                not in Fusion Fix's .ini. Always each player's own. */
 } FfSetting;
 
+/* SCBLLink's own choices (not Fusion Fix keys), kept in Fusion Fix's .ini under this section */
+#define FF_SCBL_SEC "SCBLLink"
+
 extern const FfSetting FF_SETTINGS[];
 extern const int FF_NSETTINGS;
 

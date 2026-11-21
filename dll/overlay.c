@@ -88,6 +88,19 @@ void overlay_invite(const char *from)
     LeaveCriticalSection(&g_cs);
 }
 
+/* a card from SCBLLink, like the invitation's: title, and what to do ("Restart Blacklist to see it") */
+static char g_ntitle[64], g_nline[80];
+static uint32_t g_notice_until;
+
+void overlay_notice(const char *title, const char *line)
+{
+    EnterCriticalSection(&g_cs);
+    sfmt(g_ntitle, sizeof g_ntitle, "%s", title);
+    sfmt(g_nline, sizeof g_nline, "%s", line);
+    g_notice_until = GetTickCount() + 30000;
+    LeaveCriticalSection(&g_cs);
+}
+
 void overlay_invite_clear(void)
 {
     EnterCriticalSection(&g_cs);
@@ -218,9 +231,12 @@ static void text(int x, int y, HGDI font, DWORD color, const char *s)
 static bool compose(int scale, int *out_w, int *out_h)
 {
     uint32_t now = GetTickCount();
-    char inv[SL_NAME];
+    char inv[SL_NAME], nt[64], nl[80];
     EnterCriticalSection(&g_cs);
     sfmt(inv, sizeof inv, "%s", g_invite);
+    bool notice = (int32_t)(g_notice_until - now) > 0;
+    sfmt(nt, sizeof nt, "%s", g_ntitle);
+    sfmt(nl, sizeof nl, "%s", g_nline);
     LeaveCriticalSection(&g_cs);
     bool hello = (int32_t)(g_hello_until - now) > 0;
     bool noted = (int32_t)(g_note_until - now) > 0;
@@ -263,6 +279,17 @@ static bool compose(int scale, int *out_w, int *out_h)
         sfmt(t, sizeof t, "%s invited you", inv);
         text(P(22), P(14), g_bold, C_TEXT, t);
         text(P(22), P(46), g_font, C_ACCENT, "Press F5 to join");
+        *out_w = w;
+        *out_h = h;
+        return true;
+    }
+    if (notice) {   /* the invitation's card, in red: something to do (an invitation comes first) */
+        int w = P(420), h = P(84);
+        if (!canvas(w, h, S)) return false;
+        fill(0, 0, w, h, C_WARN);
+        fill(P(4), 1, w - P(4) - 1, h - 2, C_BG);
+        text(P(22), P(14), g_bold, C_TEXT, nt);
+        text(P(22), P(46), g_font, C_WARN, nl);
         *out_w = w;
         *out_h = h;
         return true;

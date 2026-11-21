@@ -5,6 +5,7 @@
 
 void overlay_invite(const char *from);
 void overlay_invite_clear(void);
+void overlay_notice(const char *title, const char *line);
 
 #define PIPE_NAME "\\\\.\\pipe\\scbllink-game"
 #define LINE_MAX 4096
@@ -202,6 +203,11 @@ static void on_line(char *line)
         unlock();
         sl_log("event %d %s", e.type, e.name);
         if (e.type == SL_EV_INVITE_ACCEPTED) overlay_invite_clear(); /* accepted in SCBLLink's window */
+    } else if (!strcmp(f[0], "NOTICE") && n == 3) {
+        char t[64], l[80];
+        if (!take(t, sizeof t, f[1]) || !take(l, sizeof l, f[2]) || !t[0]) { sl_log("! bad NOTICE line"); return; }
+        sl_log("notice: %s - %s", t, l);
+        overlay_notice(t, l);
     } else {
         sl_log("! unknown line from SCBLLink (%s)", f[0]);
     }

@@ -497,6 +497,8 @@ BOOL WINAPI DllMain(HMODULE dll, DWORD reason, void *reserved)
         sl_init();
         AddVectoredExceptionHandler(1, on_crash);
         hooks_install(false);
+        pec_start();
+        cfgcap_start();
     }
     return 1;
 }

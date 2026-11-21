@@ -23,6 +23,8 @@
 #include "ui.h"
 #include "account.h"
 #include "fusion.h"
+#include "pec.h"
+#include "camera.h"
 #include "gamepipe.h"
 #include "ownsrv.h"
 
@@ -657,6 +659,139 @@ static int video_apply(const uint8_t *m, int n)
     return changed;
 }
 
+/* ---------- Balaclava and Crosshair: the game's own config files, changed on this PC ----------
+   The game DLL saves the game's own file in %APPDATA%\SCBLLink the first time the game runs
+   (dll/pec.c, dll/cfgcap.c). From it SCBLLink writes the changed file into the game folder
+   (marked as ours) while the choice is on, and removes it (only ours) when it's off. The game
+   reads it when it starts. Nothing of the game's is shipped. */
+/* [SCBLLink] key = val in Fusion Fix's .ini (where Game settings keeps SCBLLink's own choices) */
+static bool ff_choice(const char *key, const char *val)
+{
+    char path[800], v[8];
+    sys_path(path, sizeof path, FF_INI);
+    int n = 0;
+    char *ini = file_read_all(path, &n);
+    bool on = ini && ff_ini_get(ini, FF_SCBL_SEC, key, v, sizeof v) && !strcmp(v, val);
+    free(ini);
+    return on;
+}
+
+static bool bala_sam(void) { return ff_choice("Balaclava", "1"); }
+static bool bala_briggs(void) { return ff_choice("BalaclavaBriggs", "1"); }
+static bool bala_any(void) { return bala_sam() || bala_briggs(); }
+static char *bala_make(const char *orig) { return pec_balaclava(orig, bala_sam(), bala_briggs()); }
+static bool cross_off(void) { return ff_choice("Crosshair", "0"); }
+
+typedef struct {
+    const char *name;        /* "Balaclava" */
+    bool (*wanted)(void);    /* write our file? */
+    const char *file;        /* under src\SYSTEM */
+    const char *orig;        /* in %APPDATA%\SCBLLink */
+    char *(*make)(const char *orig);
+    bool (*ours)(const char *text);
+    const char *on_title, *on_line, *off_title, *off_line;   /* the overlay's card */
+    bool said_other, said_wait;
+} GameOpt;
+
+static GameOpt g_opts[] = {
+    { "Balaclava", bala_any, PEC_FILE, PEC_ORIG_FILE, bala_make, pec_ours,
+      "Balaclava is ready", "Restart Blacklist to see it", "Balaclava is off", "Restart Blacklist to remove it", false, false },
+    { "Crosshair off", cross_off, CAM_FILE, CAM_ORIG_FILE, cam_crosshair_off, cam_ours,
+      "Crosshair off is ready", "Restart Blacklist to hide it", "Crosshair is back on", "Restart Blacklist to see it", false, false },
+};
+#define NOPTS ((int)(sizeof g_opts / sizeof g_opts[0]))
+
+static bool opt_orig_path(const GameOpt *o, char *out, size_t n)
+{
+    const char *app = getenv("APPDATA");
+    if (!app) return false;
+    sfmt(out, n, "%s\\SCBLLink\\%s", app, o->orig);
+    return true;
+}
+
+/* tell: the player just saved the settings, so say what happens; otherwise only news */
+static void opt_sync(GameOpt *o, bool tell)
+{
+    if (!g_sys_dir[0]) return;
+    char path[800], orig_path[800];
+    sys_path(path, sizeof path, o->file);
+    int n = 0;
+    char *cur = file_read_all(path, &n);
+    bool ours = o->ours(cur), want = o->wanted();
+    if (!want) {
+        if (ours) {
+            if (remove(path) == 0) {
+                say("%s: undone, from the next start of Blacklist.", o->name);
+                if (game_running()) gp_send("NOTICE\t%s\t%s", o->off_title, o->off_line);
+            } else say("! Could not remove %s (%s): is it read-only?", o->file, o->name);
+        }
+        free(cur);
+        return;
+    }
+    if (cur && !ours) {
+        if (tell || !o->said_other)
+            say("! There is already a %s in the game folder (a mod?). %s was left out so it isn't changed: remove that file first.", o->file, o->name);
+        o->said_other = true;
+        free(cur);
+        return;
+    }
+    if (!opt_orig_path(o, orig_path, sizeof orig_path)) return;
+    char *orig = file_read_all(orig_path, &n);
+    if (!orig) {
+        free(cur);
+        if (tell || !o->said_wait)
+            say("%s: start Blacklist once and go to the menu. SCBLLink then gets the game's own settings, "
+                "and it counts from the start after that.", o->name);
+        o->said_wait = true;
+        return;
+    }
+    char *made = o->make(orig);
+    free(orig);
+    if (made && ours && !strcmp(made, cur)) {   /* ours, and as the choices want it */
+        free(made);
+        free(cur);
+        if (tell) say("%s is on.", o->name);
+        return;
+    }
+    free(cur);   /* not there, or ours but made for other choices: written (again) below */
+    if (!made) {
+        /* not the whole file: never written (a partial config breaks the game and its saves); the game DLL tries again */
+        remove(orig_path);
+        say("! %s: the settings SCBLLink got from the game weren't complete. Start Blacklist once more and go to the menu.", o->name);
+        return;
+    }
+    if (strchr(o->file, '\\')) {   /* update\...: the folder may not be there yet */
+        char dir[800];
+        sfmt(dir, sizeof dir, "%s", path);
+        char *cut = 0;
+        for (char *q = dir; *q; q++) if (*q == '\\') cut = q;
+        if (cut) *cut = 0;
+        if (!file_exists(dir)) cmd("cmd /c mkdir \"%s\"", dir);
+    }
+    bool ok = file_write_text(path, made);
+    free(made);
+    if (!ok) { say("! Could not write %s (%s).", o->file, o->name); return; }
+    if (game_running()) {
+        say("%s: ready, restart Blacklist to see it.", o->name);
+        gp_send("NOTICE\t%s\t%s", o->on_title, o->on_line);   /* a red card in the game */
+    } else say("%s is on: it counts from the next start of Blacklist.", o->name);
+}
+
+static void opts_sync(bool tell) { for (int i = 0; i < NOPTS; i++) opt_sync(&g_opts[i], tell); }
+
+/* Remove SCBL Fix: our files go too */
+static void opts_remove(void)
+{
+    for (int i = 0; i < NOPTS; i++) {
+        char path[800];
+        sys_path(path, sizeof path, g_opts[i].file);
+        int n = 0;
+        char *t = file_read_all(path, &n);
+        if (g_opts[i].ours(t) && remove(path) == 0) say("%s: its file is removed.", g_opts[i].name);
+        free(t);
+    }
+}
+
 static bool ff_install(void)
 {
     char dir[700], zip[800], un[800];
@@ -752,6 +887,7 @@ static void fix_remove(void)
     remove(orig);
     *fix_cache_at() = 0;
     say("SCBL Fix removed: the game is back to its own uplay_r1_loader.dll.");
+    opts_remove();
     ff_remove();
 }
 
@@ -2180,6 +2316,9 @@ static void tick(u64 t)
     }
     /* keep checking until ready (every second at first, quietly, then every 5 s), then every
        15 s quietly. Not before IPv6 is off the adapter: the game must start after that. */
+    /* Balaclava, Crosshair: write their files as soon as the game DLL has saved the game's own ones */
+    static u64 last_pec;
+    if (t - last_pec > 5000) { last_pec = t; opts_sync(false); }
     v6_report();
     if (g_net_up && g_mode != MODE_IDLE && t >= g_next_check && g_chk_state == CHK_IDLE && g_v6_state != 1 &&
         (g_mode == MODE_HOST || (g_npeers && g_peers[0].welcomed))) {
@@ -2328,6 +2467,7 @@ static bool handle(const Cmd *c)
         if (vc > 0 && game_running())
             say("! Blacklist is running: it may write its videoSettings.ini again when it closes. If motion blur comes back, save these settings again with the game closed.");
         say("Game settings saved (%d changed). They count from the next start of Blacklist.", a.applied);
+        opts_sync(true);
         if (g_mode == MODE_HOST) send_ff_all();
         break;
     }

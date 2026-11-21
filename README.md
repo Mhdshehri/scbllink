@@ -25,12 +25,18 @@ By Mhdshehri. The Blacklist sibling of [SCCTLink](https://github.com/Mhdshehri/s
    - **Friends:** click **Join a friend**, pick the host and click **Join** (or paste the lobby code), wait for **Ready**, then **Start Blacklist**.
    - In the game, anyone can make the match and invite the others from the friends list; accept an invitation with **F5**.
 4. **Game settings** changes Fusion Fix's options. Your own (intro, mouse, field of view…) are yours; the co-op ones (enemies, game over when seen, unlocks) must be the same for everyone, so the host's are sent to the friends who join.
+   SCBLLink adds a few of its own, each only on your PC:
+   - **Motion blur**: on or off (the game's menu has no switch for it).
+   - **Balaclava (Sam)** and **Balaclava (Briggs, co-op)**: they wear the balaclava the game already has, instead of the bare head.
+   - **Crosshair**: off hides it on foot, aiming and in cover (a laser sight still shows its dot); the drone, turret and remote sniper keep theirs.
+
+   The game's own files are never shipped. For the balaclava and the crosshair, SCBLLink's game DLL keeps a copy of the game's own settings the first time the game runs, and SCBLLink writes the changed file from it. So the first time only: start Blacklist once (to the menu), then restart it. A red card in the game says when.
 
 Everyone needs the same SCBLLink version.
 
 ## Build
 
-`./build_windows.sh` builds `build/win/SCBLLink.exe` (32-bit Windows) and `./build_dll.sh` the game DLL, with clang and lld only, no Windows SDK. On Linux: `test/test_pkt.c` (packet filter), `test/test_account.c` (accounts), `test/test_fusion.c` (Fusion Fix settings, give it the release's `.ini`), `test/test_crypto.c` (MD5, RC4, inflate), and `test/srv_udp.c` with `tools/replay.py` and `tools/test_invite_flow.py` (the server against a recorded game session, and the private-match invitation).
+`./build_windows.sh` builds `build/win/SCBLLink.exe` (32-bit Windows) and `./build_dll.sh` the game DLL, with clang and lld only, no Windows SDK. On Linux: `test/test_pkt.c` (packet filter), `test/test_account.c` (accounts), `test/test_fusion.c` (Fusion Fix settings, give it the release's `.ini`), `test/test_crypto.c` (MD5, RC4, inflate), `test/test_video.c` (motion blur), `test/test_pec.c` and `test/test_camera.c` (balaclava and crosshair files), and `test/srv_udp.c` with `tools/replay.py` and `tools/test_invite_flow.py` (the server against a recorded game session, and the private-match invitation).
 
 What the game says to its server is written down in [docs/server-protocol.md](docs/server-protocol.md), from SCBLLink's own recordings.
 
