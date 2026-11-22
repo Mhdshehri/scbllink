@@ -21,10 +21,10 @@ By Mhdshehri. The Blacklist sibling of [SCCTLink](https://github.com/Mhdshehri/s
 1. Unzip the release (`SCBLLink.exe`, `scbllink-game.dll`, `wintun.dll`, `steam_api.dll`) into one folder and run `SCBLLink.exe` (it asks for administrator rights, for the virtual adapter).
 2. Click **Install SCBL Fix** once. It keeps the game's own `uplay_r1_loader.dll` as `uplay_r1_loader.orig.dll`, puts SCBLLink's game DLL in, and installs ThirteenAG's Fusion Fix. **Remove SCBL Fix** puts everything back. After a Steam "Verify integrity", click it again.
 3. Play:
-   - **Host:** click **Host a game**, wait for **Ready**, then **Start Blacklist**. The host's SCBLLink must stay open while you play.
-   - **Friends:** click **Join a friend**, pick the host and click **Join** (or paste the lobby code), wait for **Ready**, then **Start Blacklist**.
+   - **Host:** on the **Play** page pick **Host a game** and click the green button next to it, wait for **Ready**, then **Start Blacklist**. The host's SCBLLink must stay open while you play.
+   - **Friends:** pick **Join a friend** and click the green button, pick the host and click **Join** (or paste the lobby code), wait for **Ready**, then **Start Blacklist**.
    - In the game, anyone can make the match and invite the others from the friends list; accept an invitation with **F5**.
-4. **Game settings** changes Fusion Fix's options. Your own (intro, mouse, field of view…) are yours; the co-op ones (enemies, game over when seen, unlocks) must be the same for everyone, so the host's are sent to the friends who join.
+4. The **Settings** page changes Fusion Fix's options (**Your game** and **Co-op**). Your own (intro, mouse, field of view…) are yours; the co-op ones (enemies, game over when seen, unlocks) must be the same for everyone, so the host's are sent to the friends who join.
    SCBLLink adds a few of its own, each only on your PC:
    - **Motion blur**: on or off (the game's menu has no switch for it).
    - **Balaclava (Sam)** and **Balaclava (Briggs, co-op)**: they wear the balaclava the game already has, instead of the bare head.
