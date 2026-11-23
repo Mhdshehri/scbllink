@@ -5,7 +5,13 @@ No VPN, no port forwarding, no strangers: only your Steam friends can join, and 
 
 By Mhdshehri. The Blacklist sibling of [SCCTLink](https://github.com/Mhdshehri/scctlink).
 
-> **Version 0.3.5 — a test build.** Private co-op and Versus work, with SCBLLink's own server and its own game DLL.
+> **Version 0.4.2 — a test build.** Private co-op and Versus work, with SCBLLink's own server and its own game DLL.
+
+![SCBLLink: the Play page while hosting](docs/images/play.png)
+
+| Settings: your game | Settings: co-op | Light theme |
+|---|---|---|
+| ![Settings, your game](docs/images/settings-your-game.png) | ![Settings, co-op](docs/images/settings-coop.png) | ![The Play page, light theme](docs/images/play-light.png) |
 
 ## How it works
 

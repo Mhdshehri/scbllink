@@ -174,6 +174,12 @@ IMP BOOL WINAPI ScreenToClient(HWND w, POINT *p);
 IMP HANDLE WINAPI LoadImageW(HINSTANCE i, const WCHAR *name, UINT type, int cx, int cy, UINT flags);
 IMP BOOL WINAPI DrawIconEx(HDC dc, int x, int y, HICON icon, int cx, int cy, UINT step, HBRUSH flicker, UINT flags);
 IMP long WINAPI GetWindowLongW(HWND w, int i);
+IMP HDC WINAPI CreateCompatibleDC(HDC dc);
+IMP HANDLE WINAPI CreateCompatibleBitmap(HDC dc, int w, int h);
+IMP BOOL WINAPI DeleteDC(HDC dc);
+IMP int WINAPI SetStretchBltMode(HDC dc, int mode);
+IMP BOOL WINAPI SetBrushOrgEx(HDC dc, int x, int y, void *old);
+IMP BOOL WINAPI StretchBlt(HDC d, int x, int y, int w, int h, HDC s, int sx, int sy, int sw, int sh, DWORD rop);
 
 #define DT_CALCRECT 0x400
 #define DT_RIGHT 0x2
@@ -376,43 +382,57 @@ typedef struct { HWND h; int x, y, w, hh; } Frame;
 static Frame g_frames[64];
 static int g_nframes;
 
+/* A rounded box with smooth edges (device pixels): GDI's RoundRect has none, so it's drawn
+   4 times bigger on bg and shrunk with averaging (HALFTONE). edge == fill: no outline. */
+#define AA 4
+static void aa_box(HDC dc, int l, int t, int r, int b, int radius, DWORD fill, DWORD edge, DWORD bg)
+{
+    int w = r - l, h = b - t;
+    if (w <= 0 || h <= 0) return;
+    HDC m = CreateCompatibleDC(dc);
+    HANDLE bmp = CreateCompatibleBitmap(dc, w * AA, h * AA);
+    if (!m || !bmp) { if (bmp) DeleteObject(bmp); if (m) DeleteDC(m); return; }
+    HANDLE obmp = SelectObject(m, bmp);
+    RECT all = { 0, 0, w * AA, h * AA };
+    HBRUSH bb = CreateSolidBrush(bg);
+    FillRect(m, &all, bb);
+    DeleteObject(bb);
+    HBRUSH fb = CreateSolidBrush(fill);
+    int pw = edge == fill ? 1 : AA * (g_dpi >= 144 ? 2 : 1);
+    HANDLE p = CreatePen(0, pw, edge);
+    HANDLE ob = SelectObject(m, fb), op = SelectObject(m, p);
+    int k = pw / 2;
+    RoundRect(m, k, k, w * AA - k, h * AA - k, radius * AA, radius * AA);
+    SelectObject(m, ob);
+    SelectObject(m, op);
+    DeleteObject(fb);
+    DeleteObject(p);
+    SetStretchBltMode(dc, 4 /* HALFTONE */);
+    SetBrushOrgEx(dc, 0, 0, 0);
+    StretchBlt(dc, l, t, w, h, m, 0, 0, w * AA, h * AA, 0x00CC0020 /* SRCCOPY */);
+    SelectObject(m, obmp);
+    DeleteObject(bmp);
+    DeleteDC(m);
+}
+
 static void draw_frames(HDC dc)
 {
-    HANDLE p = CreatePen(0, 1, T.border);
-    HANDLE ob = SelectObject(dc, g_br_field), op = SelectObject(dc, p);
     for (int i = 0; i < g_nframes; i++) {
         Frame *f = &g_frames[i];
         if (!IsWindowVisible(f->h)) continue;
-        RoundRect(dc, S_(f->x), S_(f->y), S_(f->x + f->w), S_(f->y + f->hh), S_(8), S_(8));
+        aa_box(dc, S_(f->x), S_(f->y), S_(f->x + f->w), S_(f->y + f->hh), S_(8), T.field, T.border, T.panel);
     }
-    SelectObject(dc, ob);
-    SelectObject(dc, op);
-    DeleteObject(p);
 }
 
-/* a rounded box in fill with an edge (96 dpi units) */
-static void rbox(HDC dc, int x, int y, int w, int h, int r, DWORD fill, DWORD edge)
+/* a rounded box in fill with an edge, on bg (96 dpi units) */
+static void rbox(HDC dc, int x, int y, int w, int h, int r, DWORD fill, DWORD edge, DWORD bg)
 {
-    HBRUSH b = CreateSolidBrush(fill);
-    HANDLE p = CreatePen(0, 1, edge);
-    HANDLE ob = SelectObject(dc, b), op = SelectObject(dc, p);
-    RoundRect(dc, S_(x), S_(y), S_(x + w), S_(y + h), S_(r), S_(r));
-    SelectObject(dc, ob);
-    SelectObject(dc, op);
-    DeleteObject(b);
-    DeleteObject(p);
+    aa_box(dc, S_(x), S_(y), S_(x + w), S_(y + h), S_(r), fill, edge, bg);
 }
-/* a dot in device pixels */
-static void dot(HDC dc, int x, int y, int r, DWORD color)
+/* a dot (device pixels), on bg */
+static void dot(HDC dc, int x, int y, int r, DWORD color, DWORD bg)
 {
-    HBRUSH b = CreateSolidBrush(color);
-    HANDLE p = CreatePen(0, 1, color);
-    HANDLE ob = SelectObject(dc, b), op = SelectObject(dc, p);
-    RoundRect(dc, x, y, x + r, y + r, r, r);
-    SelectObject(dc, ob);
-    SelectObject(dc, op);
-    DeleteObject(b);
-    DeleteObject(p);
+    aa_box(dc, x, y, x + r, y + r, r, color, color, bg);
 }
 /* an icon (one glyph) centred in r, device pixels */
 static void glyph(HDC dc, WCHAR g, RECT r, HFONT f, DWORD color)
@@ -442,7 +462,7 @@ static void icon_text(HDC dc, RECT r, WCHAR ic, const WCHAR *t, int n, HFONT f, 
     DrawTextW(dc, t, n, &tr, DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
     SelectObject(dc, of);
 }
-static void card(HDC dc, int x, int y, int w, int h) { rbox(dc, x, y, w, h, 12, T.panel, T.border); }
+static void card(HDC dc, int x, int y, int w, int h) { rbox(dc, x, y, w, h, 12, T.panel, T.border, T.bg); }
 /* text at x, y, w, h (96 dpi units) */
 static void label(HDC dc, const WCHAR *t, int x, int y, int w, int h, HFONT f, DWORD color, UINT fmt)
 {
@@ -652,6 +672,11 @@ static HBRUSH under(UINT id)
     if (id >= ID_FF_CTL && id < ID_FF_CTL + 64) return g_br_panel;
     return g_br_bg;
 }
+static DWORD under_color(UINT id)
+{
+    HBRUSH b = under(id);
+    return b == g_br_side ? T.side : b == g_br_panel ? T.panel : b == g_br_bg ? T.bg : banner_fill();
+}
 
 /* the sidebar's pages: the picked one on a lighter pill with a green bar on its left */
 static void draw_nav(DrawItem *d)
@@ -659,16 +684,8 @@ static void draw_nav(DrawItem *d)
     bool on = tab_of(d->id) == g_tab;
     FillRect(d->dc, &d->rc, g_br_side);
     if (on) {
-        HBRUSH b = CreateSolidBrush(T.navsel);
-        HANDLE p = CreatePen(0, 1, T.dark ? T.navsel : T.border);
-        HANDLE ob = SelectObject(d->dc, b), op = SelectObject(d->dc, p);
-        RoundRect(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, S_(8), S_(8));
-        SelectObject(d->dc, ob);
-        SelectObject(d->dc, op);
-        DeleteObject(b);
-        DeleteObject(p);
-        RECT u = { d->rc.left + S_(5), d->rc.top + S_(9), d->rc.left + S_(8), d->rc.bottom - S_(9) };
-        FillRect(d->dc, &u, g_br_accent);
+        aa_box(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, S_(8), T.navsel, T.dark ? T.navsel : T.border, T.side);
+        aa_box(d->dc, d->rc.left + S_(5), d->rc.top + S_(9), d->rc.left + S_(8), d->rc.bottom - S_(9), S_(3), T.accent, T.accent, T.navsel);
     }
     WCHAR w[32];
     int n = GetWindowTextW(d->hwnd, w, 32);
@@ -685,7 +702,7 @@ static void draw_nav(DrawItem *d)
     SelectObject(d->dc, of);
     if (d->id == ID_TAB_LOG && g_log_unseen) { /* a red dot: a warning arrived */
         int r = S_(8);
-        dot(d->dc, d->rc.right - S_(20), (d->rc.top + d->rc.bottom - r) / 2, r, red_text());
+        dot(d->dc, d->rc.right - S_(20), (d->rc.top + d->rc.bottom - r) / 2, r, red_text(), on ? T.navsel : T.side);
     }
 }
 
@@ -696,26 +713,11 @@ static void draw_segment(DrawItem *d)
     bool host = d->id == ID_HOST;
     const UiState *s = &g_shown;
     bool right = host ? (s->mode == MODE_JOIN || (s->mode == MODE_IDLE && g_role == 1)) : g_settab == 1;
-    FillRect(d->dc, &d->rc, g_br_bg);
-    HBRUSH b = CreateSolidBrush(T.dark ? T.side : T.btn_down);
-    HANDLE p = CreatePen(0, 1, T.border);
-    HANDLE ob = SelectObject(d->dc, b), op = SelectObject(d->dc, p);
-    RoundRect(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, S_(10), S_(10));
-    SelectObject(d->dc, ob);
-    SelectObject(d->dc, op);
-    DeleteObject(b);
-    DeleteObject(p);
+    DWORD tray = T.dark ? T.side : T.btn_down;
+    aa_box(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, S_(10), tray, T.border, T.bg);
     int mid = (d->rc.left + d->rc.right) / 2, k = S_(4);
     RECT half = { right ? mid + k / 2 : d->rc.left + k, d->rc.top + k, right ? d->rc.right - k : mid - k / 2, d->rc.bottom - k };
-    b = CreateSolidBrush(T.navsel);
-    p = CreatePen(0, 1, off ? T.border : T.accent);
-    ob = SelectObject(d->dc, b);
-    op = SelectObject(d->dc, p);
-    RoundRect(d->dc, half.left, half.top, half.right, half.bottom, S_(8), S_(8));
-    SelectObject(d->dc, ob);
-    SelectObject(d->dc, op);
-    DeleteObject(b);
-    DeleteObject(p);
+    aa_box(d->dc, half.left, half.top, half.right, half.bottom, S_(8), T.navsel, off ? T.border : T.accent, tray);
     SetBkMode(d->dc, TRANSPARENT_BK);
     for (int i = 0; i < 2; i++) {
         bool on = (i == 1) == right;
@@ -750,17 +752,10 @@ static void draw_switch(DrawItem *d, bool on)
     FillRect(d->dc, &d->rc, under(d->id));
     int h = S_(18), w = S_(34), x = d->rc.right - w, y = (d->rc.top + d->rc.bottom - h) / 2;
     DWORD fill = on ? (off ? (T.dark ? RGBC(62, 84, 46) : RGBC(178, 210, 156)) : T.accent) : (off ? T.dis_bg : (T.dark ? RGBC(80, 85, 91) : RGBC(185, 189, 182)));
-    HBRUSH b = CreateSolidBrush(fill);
-    HANDLE p = CreatePen(0, 1, focus && !off ? T.text : fill);
-    HANDLE ob = SelectObject(d->dc, b), op = SelectObject(d->dc, p);
-    RoundRect(d->dc, x, y, x + w, y + h, h, h);
-    SelectObject(d->dc, ob);
-    SelectObject(d->dc, op);
-    DeleteObject(b);
-    DeleteObject(p);
+    aa_box(d->dc, x, y, x + w, y + h, h, fill, focus && !off ? T.text : fill, under_color(d->id));
     int k = h - S_(6), kx = on ? x + w - k - S_(3) : x + S_(3), ky = y + S_(3);
     DWORD kc = off ? T.dis_text : on ? (T.dark ? T.sel_text : RGBC(255, 255, 255)) : RGBC(255, 255, 255);
-    dot(d->dc, kx, ky, k, kc);
+    dot(d->dc, kx, ky, k, kc, fill);
     SetBkMode(d->dc, TRANSPARENT_BK);
     HANDLE of = SelectObject(d->dc, d->id == ID_FF_SWITCH ? g_bold : g_font);
     WCHAR t[128];
@@ -786,15 +781,7 @@ static void draw_info(DrawItem *d)
 static void draw_choice(DrawItem *d, int i)
 {
     bool off = d->state & ODS_DISABLED, focus = d->state & ODS_FOCUS;
-    FillRect(d->dc, &d->rc, g_br_panel);
-    HBRUSH b = CreateSolidBrush(off ? T.dis_bg : T.field);
-    HANDLE p = CreatePen(0, 1, focus && !off ? T.accent : T.border);
-    HANDLE ob = SelectObject(d->dc, b), op = SelectObject(d->dc, p);
-    RoundRect(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, S_(8), S_(8));
-    SelectObject(d->dc, ob);
-    SelectObject(d->dc, op);
-    DeleteObject(b);
-    DeleteObject(p);
+    aa_box(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, S_(8), off ? T.dis_bg : T.field, focus && !off ? T.accent : T.border, T.panel);
     char t[32];
     WCHAR w[32];
     choice_text(i, g_choice[i], t, sizeof t);
@@ -831,25 +818,12 @@ static void draw_button(DrawItem *d)
     else if (stop || kick) { fill = down ? T.btn_down : T.btn; text = red_text(); edge = T.dark ? RGBC(107, 58, 58) : RGBC(226, 169, 165); }
     else if (dev_on) { fill = down ? T.btn_down : T.navsel; text = T.status; edge = T.accent; }
     else { fill = down ? T.btn_down : T.btn; text = T.text; edge = T.border; }
-    FillRect(d->dc, &d->rc, under(d->id));
-    HBRUSH b = CreateSolidBrush(fill);
-    HANDLE p = CreatePen(0, 1, edge);
-    HANDLE ob = SelectObject(d->dc, b), op = SelectObject(d->dc, p);
     int r = S_(8);
-    RoundRect(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, r, r);
-    if (focus && !off) {
-        HANDLE fp = CreatePen(0, 1, is_primary(d->id) ? T.sel_text : T.dim);
-        SelectObject(d->dc, fp);
-        SelectObject(d->dc, GetStockObject(NULL_BRUSH));
+    aa_box(d->dc, d->rc.left, d->rc.top, d->rc.right, d->rc.bottom, r, fill, edge, under_color(d->id));
+    if (focus && !off) { /* keyboard focus: a ring inside */
         int k = S_(3);
-        RoundRect(d->dc, d->rc.left + k, d->rc.top + k, d->rc.right - k, d->rc.bottom - k, r, r);
-        SelectObject(d->dc, p);
-        DeleteObject(fp);
+        aa_box(d->dc, d->rc.left + k, d->rc.top + k, d->rc.right - k, d->rc.bottom - k, r - k / 2, fill, is_primary(d->id) ? T.sel_text : T.dim, fill);
     }
-    SelectObject(d->dc, ob);
-    SelectObject(d->dc, op);
-    DeleteObject(b);
-    DeleteObject(p);
     WCHAR w[64];
     int n = GetWindowTextW(d->hwnd, w, 64);
     RECT tr = d->rc;
@@ -1259,13 +1233,13 @@ static void update_howto(void)
 
 static void draw_play(HDC dc)
 {
-    rbox(dc, CX, FIX_Y, CW, FIX_H, 12, banner_fill(), banner_edge());
+    rbox(dc, CX, FIX_Y, CW, FIX_H, 12, banner_fill(), banner_edge(), T.bg);
     card(dc, CX, LIST_Y, CW, LIST_H);
     label(dc, WTEXT("PLAYERS"), CX + 16, LIST_Y + 14, 80, 20, g_bold, T.text, DT_VCENTER);
     card(dc, CX, STAT_Y, CW, STAT_H);
     const UiState *s = &g_shown;
     DWORD c = !fixed() ? red_text() : s->ready ? T.status : s->status[0] == '!' ? red_text() : s->mode == MODE_IDLE ? T.dim : T.status;
-    dot(dc, S_(CX + 16), S_(STAT_Y + 19), S_(10), c);
+    dot(dc, S_(CX + 16), S_(STAT_Y + 19), S_(10), c, T.panel);
 }
 
 static void draw_settings(HDC dc)
@@ -1274,7 +1248,7 @@ static void draw_settings(HDC dc)
     if (g_settab == 1) {
         card(dc, CX, LOCK_Y, CW, LOCK_H);
         label(dc, WTEXT("THE SAME FOR EVERYONE WHO PLAYS TOGETHER"), CX + 16, LOCK_Y + 12, CW - 300, 20, g_cap, T.status, DT_VCENTER);
-        rbox(dc, CX + 14, LOCK_Y + 40, CW - 28, 36, 8, warn_fill(), warn_edge());
+        rbox(dc, CX + 14, LOCK_Y + 40, CW - 28, 36, 8, warn_fill(), warn_edge(), T.panel);
     }
     for (int g = 0; g < G_N; g++) {
         if (group_shared(g) != (g_settab == 1)) continue;
@@ -1297,7 +1271,7 @@ static void draw_page(HDC dc)
     FillRect(dc, &line, g_br_border);
     draw_logo(dc, 16, 18, 40);
     label(dc, WTEXT("SCBLLINK"), 64, 18, SIDE_W - 70, 40, g_brand, T.text, DT_VCENTER);
-    for (int i = 0; i < 3; i++) dot(dc, S_(66 + i * 11), S_(64), S_(6), T.accent); /* the goggles' lights */
+    for (int i = 0; i < 3; i++) dot(dc, S_(66 + i * 11), S_(64), S_(6), T.accent, T.side); /* the goggles' lights */
 #ifdef SCBL_DEV
     label(dc, WTEXT("DEVELOPER"), 16, 224, SIDE_W - 32, 18, g_cap, T.dim, DT_VCENTER);
 #endif

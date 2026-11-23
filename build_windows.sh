@@ -31,7 +31,8 @@ mkdef user32 GetDlgItem@8 SetFocus@4 GetWindowRect@8 OpenClipboard@4 EmptyClipbo
     SetLayeredWindowAttributes@16 IsWindowVisible@4 FlashWindowEx@4 GetForegroundWindow@0 MessageBeep@4 \
     LoadImageW@24 DrawIconEx@36 GetCursorPos@4 ScreenToClient@8 GetWindowLongW@8
 mkdef gdi32 CreateFontW@56 GetDeviceCaps@8 CreateSolidBrush@4 CreatePen@12 SelectObject@8 DeleteObject@4 \
-    GetStockObject@4 SetTextColor@8 SetBkColor@8 SetBkMode@8 RoundRect@28
+    GetStockObject@4 SetTextColor@8 SetBkColor@8 SetBkMode@8 RoundRect@28 \
+    CreateCompatibleDC@4 CreateCompatibleBitmap@12 DeleteDC@4 SetStretchBltMode@8 SetBrushOrgEx@16 StretchBlt@44
 mkdef comctl32 InitCommonControls@0
 mkdef shell32 ShellExecuteA@24 SHGetFolderPathA@20
 mkdef advapi32 RegGetValueA@28 SystemFunction036@8 ConvertStringSecurityDescriptorToSecurityDescriptorA@16
